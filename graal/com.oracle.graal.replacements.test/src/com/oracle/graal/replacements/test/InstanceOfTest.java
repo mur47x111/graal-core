@@ -24,6 +24,7 @@ package com.oracle.graal.replacements.test;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -472,6 +473,33 @@ public class InstanceOfTest extends TypeCheckTest {
         testConstantReturn("exactlyStringArray", 0);
         testConstantReturn("instanceofString", 0);
         testConstantReturn("instanceofStringArray", 0);
+    }
+
+    public void whileLoop(List<Object> list) {
+        if (!list.isEmpty()) {
+            Iterator<Object> iterator = list.iterator();
+            Object current = null;
+            while (iterator.hasNext()) {
+                current = iterator.next();
+                if (!(current instanceof String)) {
+                    break;
+                }
+            }
+
+            while (current instanceof Integer) {
+                if (iterator.hasNext()) {
+                    current = iterator.next();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testWhileLoop() {
+        List<Object> list = Arrays.asList("1", "2", 3, new Object());
+        test("whileLoop", list);
     }
 
     private void testConstantReturn(String name, Object value) {

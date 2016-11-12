@@ -238,7 +238,7 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
             MergeNode merge = graph.createMerge();
             merge.setStateAfter(lastFrameState);
             GuardPhiNode guardPhi = null;
-            if (successor.hasUsages()) {
+            if (successor.hasUsages() && successor instanceof BeginNode) {
                 guardPhi = graph.addWithoutUnique(new GuardPhiNode(merge));
                 successor.replaceAtUsages(guardPhi);
             }
@@ -253,10 +253,14 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
                 merge.addForwardEnd(end);
             }
 
-            FixedNode next = successor.next();
-            successor.setNext(null);
-            merge.setNext(next);
-            successor.safeDelete();
+            if (successor instanceof BeginNode) {
+                FixedNode next = successor.next();
+                successor.setNext(null);
+                merge.setNext(next);
+                successor.safeDelete();
+            } else {
+                merge.setNext(successor);
+            }
         } else {
             AbstractBeginNode soloBranch = branches.get(0);
             soloBranch.replaceAtPredecessor(successor);
