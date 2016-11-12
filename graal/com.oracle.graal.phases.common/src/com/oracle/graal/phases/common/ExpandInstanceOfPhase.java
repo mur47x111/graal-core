@@ -236,7 +236,9 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
     private static void connectBranches(StructuredGraph graph, FrameState lastFrameState, ArrayList<AbstractBeginNode> branches, AbstractBeginNode successor) {
         if (branches.size() > 1) {
             MergeNode merge = graph.createMerge();
-            merge.setStateAfter(lastFrameState);
+            if (lastFrameState != null && lastFrameState.isAlive()) {
+                merge.setStateAfter(lastFrameState.duplicate());
+            }
             GuardPhiNode guardPhi = null;
             if (successor.hasUsages() && successor instanceof BeginNode) {
                 guardPhi = graph.addWithoutUnique(new GuardPhiNode(merge));
