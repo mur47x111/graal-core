@@ -22,11 +22,12 @@
  */
 package com.oracle.graal.nodes.extended;
 
-import com.oracle.graal.graph.NodeInterface;
 import com.oracle.graal.nodes.FixedWithNextNode;
+import com.oracle.graal.nodes.ValueNodeInterface;
 
-public interface AnchoringNode extends NodeInterface {
+public interface AnchoringNode extends ValueNodeInterface {
 
     @Override
     FixedWithNextNode asNode();
+
 }

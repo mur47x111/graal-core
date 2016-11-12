@@ -70,7 +70,11 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
         ScheduleResult schedule = graph.getLastSchedule();
 
         for (InstanceOfNode node : graph.getNodes(InstanceOfNode.TYPE)) {
-            processInstanceOf(node, schedule, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
+            processNotAnchoredInstanceOf(graph, node, schedule, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
+        }
+
+        for (InstanceOfNode node : graph.getNodes(InstanceOfNode.TYPE)) {
+            processInstanceOf(graph, node, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
         }
         // TODO uncomment assert graph.getNodes(InstanceOfNode.TYPE).isEmpty();
     }
@@ -126,9 +130,51 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
         assert falseBranches.size() > 0;
     }
 
-    private static void processInstanceOf(InstanceOfNode instanceOf, ScheduleResult schedule, StampProvider stampProvider,
+    private static void processNotAnchoredInstanceOf(StructuredGraph graph, InstanceOfNode instanceOf, ScheduleResult schedule, StampProvider stampProvider,
                     MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider) {
-        StructuredGraph graph = instanceOf.graph();
+        for (Node n : instanceOf.usages().snapshot()) {
+            ArrayList<AbstractBeginNode> trueBranches = new ArrayList<>();
+            ArrayList<AbstractBeginNode> falseBranches = new ArrayList<>();
+
+            if (n instanceof ConditionalNode) {
+                FixedWithNextNode anchor = getAnchor(instanceOf, schedule);
+                FrameState lastFrameState = findLastFrameState(anchor);
+                FixedNode insertBefore = anchor.next();
+                createDiamonds(instanceOf, insertBefore, trueBranches, falseBranches, stampProvider, metaAccessProvider, constantReflectionProvider);
+
+                MergeNode merge = graph.createMerge();
+                merge.setStateAfter(lastFrameState);
+
+                ConditionalNode conditionalNode = (ConditionalNode) n;
+                ValuePhiNode valuePhi = graph.addWithoutUnique(new ValuePhiNode(conditionalNode.stamp(), merge));
+
+                // Connect false branches.
+                for (AbstractBeginNode branch : falseBranches) {
+                    EndNode end = graph.createEnd();
+                    branch.setNext(end);
+                    valuePhi.addInput(conditionalNode.falseValue());
+                    merge.addForwardEnd(end);
+                }
+
+                // Connect true branches.
+                for (AbstractBeginNode branch : trueBranches) {
+                    EndNode end = graph.createEnd();
+                    branch.setNext(end);
+                    valuePhi.addInput(conditionalNode.trueValue());
+                    merge.addForwardEnd(end);
+                }
+
+                merge.setNext(insertBefore);
+                conditionalNode.replaceAtUsages(valuePhi);
+                conditionalNode.safeDelete();
+            } else if (n instanceof ShortCircuitOrNode) {
+                // TODO unwind ShortCircuitOrNode
+            }
+        }
+    }
+
+    private static void processInstanceOf(StructuredGraph graph, InstanceOfNode instanceOf, StampProvider stampProvider,
+                    MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider) {
         for (Node n : instanceOf.usages().snapshot()) {
             // The InstanceOfNode will be expanded into a potential null check (IsNullNode) and a
             // lowered instanceof check (loweredInstanceOfNode). In case it results into 3 branches,
@@ -174,39 +220,8 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
                 fixedGuardNode.safeDelete();
 
                 connectBranches(graph, lastFrameState, continueBranches, continueBranch);
-            } else if (n instanceof ConditionalNode) {
-                FixedWithNextNode anchor = getAnchor(instanceOf, schedule);
-                FrameState lastFrameState = findLastFrameState(anchor);
-                FixedNode insertBefore = anchor.next();
-                createDiamonds(instanceOf, insertBefore, trueBranches, falseBranches, stampProvider, metaAccessProvider, constantReflectionProvider);
-
-                MergeNode merge = graph.createMerge();
-                merge.setStateAfter(lastFrameState);
-
-                ConditionalNode conditionalNode = (ConditionalNode) n;
-                ValuePhiNode valuePhi = graph.addWithoutUnique(new ValuePhiNode(conditionalNode.stamp(), merge));
-
-                // Connect false branches.
-                for (AbstractBeginNode branch : falseBranches) {
-                    EndNode end = graph.createEnd();
-                    branch.setNext(end);
-                    valuePhi.addInput(conditionalNode.falseValue());
-                    merge.addForwardEnd(end);
-                }
-
-                // Connect true branches.
-                for (AbstractBeginNode branch : trueBranches) {
-                    EndNode end = graph.createEnd();
-                    branch.setNext(end);
-                    valuePhi.addInput(conditionalNode.trueValue());
-                    merge.addForwardEnd(end);
-                }
-
-                merge.setNext(insertBefore);
-                conditionalNode.replaceAtUsages(valuePhi);
-                conditionalNode.safeDelete();
             } else if (n instanceof ShortCircuitOrNode) {
-                // TODO unwind ShortCircuitOrNode
+                // TODO should have been handled in processNotAnchoredInstanceOf
             } else {
                 System.out.println(n.toString());
                 assert false;
@@ -216,7 +231,6 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
         if (instanceOf.hasNoUsages()) { // TODO remove this
             instanceOf.safeDelete();
         }
-
     }
 
     private static void connectBranches(StructuredGraph graph, FrameState lastFrameState, ArrayList<AbstractBeginNode> branches, AbstractBeginNode successor) {

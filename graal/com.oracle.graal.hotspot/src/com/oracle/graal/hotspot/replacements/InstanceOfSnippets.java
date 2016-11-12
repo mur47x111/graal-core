@@ -236,7 +236,24 @@ public class InstanceOfSnippets implements Snippets {
     }
 
     @Snippet
-    public static Object loweredInstanceof(KlassPointer checkedHub, KlassPointer objectHub, Object trueValue, Object falseValue) {
+    public static Object loweredInstanceofExact(KlassPointer checkedHub, KlassPointer objectHub, Object trueValue, Object falseValue) {
+        if (probability(LIKELY_PROBABILITY, objectHub.notEqual(checkedHub))) {
+            return falseValue;
+        }
+        return trueValue;
+    }
+
+    @Snippet
+    public static Object loweredInstanceofPrimary(KlassPointer checkedHub, KlassPointer objectHub, @ConstantParameter int superCheckOffset, Object trueValue, Object falseValue) {
+        // The hub of a primitive type can be null => always return false in this case.
+        if (probability(NOT_LIKELY_PROBABILITY, objectHub.readKlassPointer(superCheckOffset, PRIMARY_SUPERS_LOCATION).notEqual(checkedHub))) {
+            return falseValue;
+        }
+        return trueValue;
+    }
+
+    @Snippet
+    public static Object loweredInstanceofSecondary(KlassPointer checkedHub, KlassPointer objectHub, Object trueValue, Object falseValue) {
         // The hub of a primitive type can be null => always return false in this case.
         if (!checkUnknownSubType(checkedHub, objectHub)) {
             return falseValue;
@@ -252,7 +269,10 @@ public class InstanceOfSnippets implements Snippets {
         private final SnippetInfo instanceofSecondary = snippet(InstanceOfSnippets.class, "instanceofSecondary", SECONDARY_SUPER_CACHE_LOCATION);
         private final SnippetInfo instanceofDynamic = snippet(InstanceOfSnippets.class, "instanceofDynamic", SECONDARY_SUPER_CACHE_LOCATION);
         private final SnippetInfo isAssignableFrom = snippet(InstanceOfSnippets.class, "isAssignableFrom", SECONDARY_SUPER_CACHE_LOCATION);
-        private final SnippetInfo loweredInstanceof = snippet(InstanceOfSnippets.class, "loweredInstanceof", SECONDARY_SUPER_CACHE_LOCATION);
+
+        private final SnippetInfo loweredInstanceofExact = snippet(InstanceOfSnippets.class, "loweredInstanceofExact");
+        private final SnippetInfo loweredInstanceofPrimary = snippet(InstanceOfSnippets.class, "loweredInstanceofPrimary");
+        private final SnippetInfo loweredInstanceofSecondary = snippet(InstanceOfSnippets.class, "loweredInstanceofSecondary", SECONDARY_SUPER_CACHE_LOCATION);
 
         public Templates(HotSpotProviders providers, TargetDescription target) {
             super(providers, providers.getSnippetReflection(), target);
@@ -325,12 +345,25 @@ public class InstanceOfSnippets implements Snippets {
                 final HotSpotResolvedObjectType type = (HotSpotResolvedObjectType) loweredInstanceOf.type().getType();
                 ConstantNode hub = ConstantNode.forConstant(KlassPointerStamp.klassNonNull(), type.klass(), providers.getMetaAccess(), loweredInstanceOf.graph());
 
-                Arguments args = new Arguments(loweredInstanceof, loweredInstanceOf.graph().getGuardsStage(), tool.getLoweringStage());
-                args.add("checkedHub", hub);
-                args.add("objectHub", loweredInstanceOf.getHub());
+                Arguments args;
+
+                if (loweredInstanceOf.type().isExact()) {
+                    args = new Arguments(loweredInstanceofExact, loweredInstanceOf.graph().getGuardsStage(), tool.getLoweringStage());
+                    args.add("checkedHub", hub);
+                    args.add("objectHub", loweredInstanceOf.getHub());
+                } else if (type.isPrimaryType()) {
+                    args = new Arguments(loweredInstanceofPrimary, loweredInstanceOf.graph().getGuardsStage(), tool.getLoweringStage());
+                    args.add("checkedHub", hub);
+                    args.add("objectHub", loweredInstanceOf.getHub());
+                    args.addConst("superCheckOffset", type.superCheckOffset());
+                } else {
+                    args = new Arguments(loweredInstanceofSecondary, loweredInstanceOf.graph().getGuardsStage(), tool.getLoweringStage());
+                    args.add("checkedHub", hub);
+                    args.add("objectHub", loweredInstanceOf.getHub());
+                }
+
                 args.add("trueValue", replacer.trueValue);
                 args.add("falseValue", replacer.falseValue);
-
                 return args;
             } else {
                 throw GraalError.shouldNotReachHere();
