@@ -88,6 +88,14 @@ public abstract class AbstractObjectStamp extends AbstractPointerStamp {
         return metaAccess.lookupJavaType(Object.class);
     }
 
+    public TypeReference getTypeReference() {
+        if (exactType) {
+            return TypeReference.createExactTrusted(type);
+        } else {
+            return TypeReference.createTrustedWithoutAssumptions(type);
+        }
+    }
+
     public ResolvedJavaType type() {
         return type;
     }

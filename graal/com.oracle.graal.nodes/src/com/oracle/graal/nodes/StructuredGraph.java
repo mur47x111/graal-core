@@ -730,4 +730,22 @@ public class StructuredGraph extends Graph implements JavaMethodContext {
         }
         return false;
     }
+
+    public BeginNode createBegin() {
+        BeginNode beginNode = new BeginNode();
+        beginNode = add(beginNode);
+        return beginNode;
+    }
+
+    public MergeNode createMerge() {
+        MergeNode mergeNode = new MergeNode();
+        mergeNode = add(mergeNode);
+        return mergeNode;
+    }
+
+    public EndNode createEnd() {
+        EndNode endNode = new EndNode();
+        endNode = add(endNode);
+        return endNode;
+    }
 }

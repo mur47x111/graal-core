@@ -23,10 +23,10 @@
 package com.oracle.graal.nodes.extended;
 
 import com.oracle.graal.graph.NodeInterface;
-import com.oracle.graal.nodes.ValueNode;
+import com.oracle.graal.nodes.FixedWithNextNode;
 
 public interface AnchoringNode extends NodeInterface {
 
     @Override
-    ValueNode asNode();
+    FixedWithNextNode asNode();
 }

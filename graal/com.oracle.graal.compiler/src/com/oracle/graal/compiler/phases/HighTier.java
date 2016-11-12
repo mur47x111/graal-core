@@ -46,6 +46,7 @@ import com.oracle.graal.phases.PhaseSuite;
 import com.oracle.graal.phases.common.CanonicalizerPhase;
 import com.oracle.graal.phases.common.ConvertDeoptimizeToGuardPhase;
 import com.oracle.graal.phases.common.DeadCodeEliminationPhase;
+import com.oracle.graal.phases.common.ExpandInstanceOfPhase;
 import com.oracle.graal.phases.common.IncrementalCanonicalizerPhase;
 import com.oracle.graal.phases.common.IterativeConditionalEliminationPhase;
 import com.oracle.graal.phases.common.LoweringPhase;
@@ -108,6 +109,7 @@ public class HighTier extends PhaseSuite<HighTierContext> {
         }
         appendPhase(new RemoveValueProxyPhase());
 
+        appendPhase(new ExpandInstanceOfPhase());
         appendPhase(new LoweringPhase(canonicalizer, LoweringTool.StandardLoweringStage.HIGH_TIER));
         if (UseGraalInstrumentation.getValue()) {
             appendPhase(new HighTierReconcileInstrumentationPhase());

@@ -65,6 +65,7 @@ import com.oracle.graal.nodes.extended.GuardingNode;
 import com.oracle.graal.nodes.java.ClassIsAssignableFromNode;
 import com.oracle.graal.nodes.java.InstanceOfDynamicNode;
 import com.oracle.graal.nodes.java.InstanceOfNode;
+import com.oracle.graal.nodes.java.LoweredInstanceOfNode;
 import com.oracle.graal.nodes.spi.LoweringTool;
 import com.oracle.graal.replacements.InstanceOfSnippetsTemplates;
 import com.oracle.graal.replacements.SnippetTemplate.Arguments;
@@ -234,6 +235,15 @@ public class InstanceOfSnippets implements Snippets {
         return trueValue;
     }
 
+    @Snippet
+    public static Object loweredInstanceof(KlassPointer checkedHub, KlassPointer objectHub, Object trueValue, Object falseValue) {
+        // The hub of a primitive type can be null => always return false in this case.
+        if (!checkUnknownSubType(checkedHub, objectHub)) {
+            return falseValue;
+        }
+        return trueValue;
+    }
+
     public static class Templates extends InstanceOfSnippetsTemplates {
 
         private final SnippetInfo instanceofWithProfile = snippet(InstanceOfSnippets.class, "instanceofWithProfile");
@@ -242,6 +252,7 @@ public class InstanceOfSnippets implements Snippets {
         private final SnippetInfo instanceofSecondary = snippet(InstanceOfSnippets.class, "instanceofSecondary", SECONDARY_SUPER_CACHE_LOCATION);
         private final SnippetInfo instanceofDynamic = snippet(InstanceOfSnippets.class, "instanceofDynamic", SECONDARY_SUPER_CACHE_LOCATION);
         private final SnippetInfo isAssignableFrom = snippet(InstanceOfSnippets.class, "isAssignableFrom", SECONDARY_SUPER_CACHE_LOCATION);
+        private final SnippetInfo loweredInstanceof = snippet(InstanceOfSnippets.class, "loweredInstanceof", SECONDARY_SUPER_CACHE_LOCATION);
 
         public Templates(HotSpotProviders providers, TargetDescription target) {
             super(providers, providers.getSnippetReflection(), target);
@@ -308,6 +319,18 @@ public class InstanceOfSnippets implements Snippets {
                 args.add("otherClass", isAssignable.getOtherClass());
                 args.add("trueValue", replacer.trueValue);
                 args.add("falseValue", replacer.falseValue);
+                return args;
+            } else if (replacer.instanceOf instanceof LoweredInstanceOfNode) {
+                LoweredInstanceOfNode loweredInstanceOf = (LoweredInstanceOfNode) replacer.instanceOf;
+                final HotSpotResolvedObjectType type = (HotSpotResolvedObjectType) loweredInstanceOf.type().getType();
+                ConstantNode hub = ConstantNode.forConstant(KlassPointerStamp.klassNonNull(), type.klass(), providers.getMetaAccess(), loweredInstanceOf.graph());
+
+                Arguments args = new Arguments(loweredInstanceof, loweredInstanceOf.graph().getGuardsStage(), tool.getLoweringStage());
+                args.add("checkedHub", hub);
+                args.add("objectHub", loweredInstanceOf.getHub());
+                args.add("trueValue", replacer.trueValue);
+                args.add("falseValue", replacer.falseValue);
+
                 return args;
             } else {
                 throw GraalError.shouldNotReachHere();

@@ -27,36 +27,26 @@ import static com.oracle.graal.nodeinfo.NodeCycles.CYCLES_15;
 import static com.oracle.graal.nodeinfo.NodeSize.SIZE_15;
 
 import com.oracle.graal.compiler.common.type.ObjectStamp;
-import com.oracle.graal.compiler.common.type.Stamp;
 import com.oracle.graal.compiler.common.type.StampFactory;
 import com.oracle.graal.compiler.common.type.TypeReference;
+import com.oracle.graal.graph.IterableNodeType;
 import com.oracle.graal.graph.NodeClass;
-import com.oracle.graal.graph.spi.CanonicalizerTool;
 import com.oracle.graal.nodeinfo.NodeInfo;
-import com.oracle.graal.nodes.LogicConstantNode;
-import com.oracle.graal.nodes.LogicNegationNode;
 import com.oracle.graal.nodes.LogicNode;
-import com.oracle.graal.nodes.UnaryOpLogicNode;
 import com.oracle.graal.nodes.ValueNode;
-import com.oracle.graal.nodes.calc.IsNullNode;
 import com.oracle.graal.nodes.extended.AnchoringNode;
 import com.oracle.graal.nodes.spi.Lowerable;
 import com.oracle.graal.nodes.spi.LoweringTool;
-import com.oracle.graal.nodes.spi.Virtualizable;
-import com.oracle.graal.nodes.spi.VirtualizerTool;
 import com.oracle.graal.nodes.type.StampTool;
 
 import jdk.vm.ci.meta.JavaTypeProfile;
-import jdk.vm.ci.meta.TriState;
 
 /**
  * The {@code InstanceOfNode} represents an instanceof test.
  */
 @NodeInfo(cycles = CYCLES_15, size = SIZE_15)
-public class InstanceOfNode extends UnaryOpLogicNode implements Lowerable, Virtualizable {
+public class InstanceOfNode extends AbstractInstanceOfNode implements Lowerable, IterableNodeType {
     public static final NodeClass<InstanceOfNode> TYPE = NodeClass.create(InstanceOfNode.class);
-
-    protected final ObjectStamp checkedStamp;
 
     private JavaTypeProfile profile;
     @OptionalInput(Anchor) protected AnchoringNode anchor;
@@ -66,8 +56,7 @@ public class InstanceOfNode extends UnaryOpLogicNode implements Lowerable, Virtu
     }
 
     protected InstanceOfNode(NodeClass<? extends InstanceOfNode> c, ObjectStamp checkedStamp, ValueNode object, JavaTypeProfile profile, AnchoringNode anchor) {
-        super(c, object);
-        this.checkedStamp = checkedStamp;
+        super(c, checkedStamp, object);
         this.profile = profile;
         this.anchor = anchor;
         assert (profile == null) || (anchor != null) : "profiles must be anchored";
@@ -103,95 +92,16 @@ public class InstanceOfNode extends UnaryOpLogicNode implements Lowerable, Virtu
         tool.getLowerer().lower(this, tool);
     }
 
-    @Override
-    public ValueNode canonical(CanonicalizerTool tool, ValueNode forValue) {
-        LogicNode synonym = findSynonym(checkedStamp, forValue);
-        if (synonym != null) {
-            return synonym;
-        } else {
-            return this;
-        }
-    }
-
-    public static LogicNode findSynonym(ObjectStamp checkedStamp, ValueNode object) {
-        ObjectStamp inputStamp = (ObjectStamp) object.stamp();
-        ObjectStamp joinedStamp = (ObjectStamp) checkedStamp.join(inputStamp);
-
-        if (joinedStamp.isEmpty()) {
-            // The check can never succeed, the intersection of the two stamps is empty.
-            return LogicConstantNode.contradiction();
-        } else {
-            ObjectStamp meetStamp = (ObjectStamp) checkedStamp.meet(inputStamp);
-            if (checkedStamp.equals(meetStamp)) {
-                // The check will always succeed, the union of the two stamps is equal to the
-                // checked stamp.
-                return LogicConstantNode.tautology();
-            } else if (checkedStamp.type().equals(meetStamp.type()) && checkedStamp.isExactType() == meetStamp.isExactType() && checkedStamp.alwaysNull() == meetStamp.alwaysNull()) {
-                assert checkedStamp.nonNull() != inputStamp.nonNull();
-                // The only difference makes the null-ness of the value => simplify the check.
-                if (checkedStamp.nonNull()) {
-                    return LogicNegationNode.create(IsNullNode.create(object));
-                } else {
-                    return IsNullNode.create(object);
-                }
-            }
-        }
-
-        return null;
-    }
-
     /**
      * Gets the type being tested.
      */
+    @Override
     public TypeReference type() {
         return StampTool.typeReferenceOrNull(checkedStamp);
     }
 
     public JavaTypeProfile profile() {
         return profile;
-    }
-
-    @Override
-    public void virtualize(VirtualizerTool tool) {
-        ValueNode alias = tool.getAlias(getValue());
-        TriState fold = tryFold(alias.stamp());
-        if (fold != TriState.UNKNOWN) {
-            tool.replaceWithValue(LogicConstantNode.forBoolean(fold.isTrue(), graph()));
-        }
-    }
-
-    @Override
-    public Stamp getSucceedingStampForValue(boolean negated) {
-        if (negated) {
-            return null;
-        } else {
-            return checkedStamp;
-        }
-    }
-
-    @Override
-    public TriState tryFold(Stamp valueStamp) {
-        if (valueStamp instanceof ObjectStamp) {
-            ObjectStamp inputStamp = (ObjectStamp) valueStamp;
-            ObjectStamp joinedStamp = (ObjectStamp) checkedStamp.join(inputStamp);
-
-            if (joinedStamp.isEmpty()) {
-                // The check can never succeed, the intersection of the two stamps is empty.
-                return TriState.FALSE;
-            } else {
-                ObjectStamp meetStamp = (ObjectStamp) checkedStamp.meet(inputStamp);
-                if (checkedStamp.equals(meetStamp)) {
-                    // The check will always succeed, the union of the two stamps is equal to the
-                    // checked stamp.
-                    return TriState.TRUE;
-                }
-            }
-        }
-        return TriState.UNKNOWN;
-    }
-
-    public boolean allowsNull() {
-        return !checkedStamp.nonNull();
     }
 
     public void setProfile(JavaTypeProfile typeProfile, AnchoringNode anchor) {

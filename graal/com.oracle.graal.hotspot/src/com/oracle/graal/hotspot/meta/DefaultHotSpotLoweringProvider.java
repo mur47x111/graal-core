@@ -125,6 +125,7 @@ import com.oracle.graal.nodes.java.DynamicNewInstanceNode;
 import com.oracle.graal.nodes.java.InstanceOfDynamicNode;
 import com.oracle.graal.nodes.java.InstanceOfNode;
 import com.oracle.graal.nodes.java.LoadExceptionObjectNode;
+import com.oracle.graal.nodes.java.LoweredInstanceOfNode;
 import com.oracle.graal.nodes.java.MethodCallTargetNode;
 import com.oracle.graal.nodes.java.MonitorExitNode;
 import com.oracle.graal.nodes.java.NewArrayNode;
@@ -251,6 +252,10 @@ public class DefaultHotSpotLoweringProvider extends DefaultJavaLoweringProvider 
         } else if (n instanceof ClassIsAssignableFromNode) {
             if (graph.getGuardsStage().areDeoptsFixed()) {
                 instanceofSnippets.lower((ClassIsAssignableFromNode) n, tool);
+            }
+        } else if (n instanceof LoweredInstanceOfNode) {
+            if (graph.getGuardsStage().areDeoptsFixed()) {
+                instanceofSnippets.lower((LoweredInstanceOfNode) n, tool);
             }
         } else if (n instanceof NewInstanceNode) {
             if (graph.getGuardsStage().areFrameStatesAtDeopts()) {
