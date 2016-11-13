@@ -113,9 +113,8 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
     /**
      * Expand the given {@code InstanceOfNode instanceOf} into a subgraph. The caller is responsible
      * for connecting the subgraph. The return value is the only entrance, while various exists are
-     * stored in {@code ArrayList<AbstractBeginNode> retTrueBranches} and
-     * {@code ArrayList<AbstractBeginNode> retFalseBranches}, representing the branches of succeeded
-     * or failed test for the given {@code instanceOf}, respectively.
+     * stored in {@code retTrueBranches} and {@code retFalseBranches}, representing the branches of
+     * succeeded or failed test for the given {@code instanceOf}, respectively.
      *
      * @return the starting node of the expanded subgraph.
      */
