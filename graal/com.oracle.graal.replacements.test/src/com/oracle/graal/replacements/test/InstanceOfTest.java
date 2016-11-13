@@ -502,6 +502,15 @@ public class InstanceOfTest extends TypeCheckTest {
         test("whileLoop", list);
     }
 
+    public boolean shortCircuitOr(Object obj) {
+        return obj instanceof String || obj instanceof Integer || obj instanceof Long;
+    }
+
+    @Test
+    public void testShortCircuitOr() {
+        test("shortCircuitOr", 1L);
+    }
+
     private void testConstantReturn(String name, Object value) {
         StructuredGraph result = buildGraph(name);
         ReturnNode ret = result.getNodes(ReturnNode.TYPE).first();

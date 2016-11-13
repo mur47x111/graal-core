@@ -48,7 +48,7 @@ public class ExpandLogicPhase extends Phase {
         assert graph.getNodes(ShortCircuitOrNode.TYPE).isEmpty();
     }
 
-    private static void processBinary(ShortCircuitOrNode binary) {
+    public static void processBinary(ShortCircuitOrNode binary) {
         while (binary.usages().isNotEmpty()) {
             Node usage = binary.usages().first();
             if (usage instanceof ShortCircuitOrNode) {
@@ -64,7 +64,7 @@ public class ExpandLogicPhase extends Phase {
         binary.safeDelete();
     }
 
-    private static void processIf(LogicNode x, boolean xNegated, LogicNode y, boolean yNegated, IfNode ifNode, double shortCircuitProbability) {
+    public static void processIf(LogicNode x, boolean xNegated, LogicNode y, boolean yNegated, IfNode ifNode, double shortCircuitProbability) {
         AbstractBeginNode trueTarget = ifNode.trueSuccessor();
         AbstractBeginNode falseTarget = ifNode.falseSuccessor();
         double firstIfProbability = shortCircuitProbability;
@@ -96,7 +96,7 @@ public class ExpandLogicPhase extends Phase {
         ifNode.safeDelete();
     }
 
-    private static void processConditional(LogicNode x, boolean xNegated, LogicNode y, boolean yNegated, ConditionalNode conditional) {
+    public static void processConditional(LogicNode x, boolean xNegated, LogicNode y, boolean yNegated, ConditionalNode conditional) {
         ValueNode trueTarget = conditional.trueValue();
         ValueNode falseTarget = conditional.falseValue();
         Graph graph = conditional.graph();
