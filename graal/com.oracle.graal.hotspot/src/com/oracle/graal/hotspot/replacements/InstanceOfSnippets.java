@@ -245,7 +245,6 @@ public class InstanceOfSnippets implements Snippets {
 
     @Snippet
     public static Object loweredInstanceofPrimary(KlassPointer checkedHub, KlassPointer objectHub, @ConstantParameter int superCheckOffset, Object trueValue, Object falseValue) {
-        // The hub of a primitive type can be null => always return false in this case.
         if (probability(NOT_LIKELY_PROBABILITY, objectHub.readKlassPointer(superCheckOffset, PRIMARY_SUPERS_LOCATION).notEqual(checkedHub))) {
             return falseValue;
         }
@@ -254,7 +253,6 @@ public class InstanceOfSnippets implements Snippets {
 
     @Snippet
     public static Object loweredInstanceofSecondary(KlassPointer checkedHub, KlassPointer objectHub, Object trueValue, Object falseValue) {
-        // The hub of a primitive type can be null => always return false in this case.
         if (!checkUnknownSubType(checkedHub, objectHub)) {
             return falseValue;
         }

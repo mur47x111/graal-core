@@ -61,20 +61,29 @@ import com.oracle.graal.phases.tiers.PhaseContext;
 import jdk.vm.ci.meta.ConstantReflectionProvider;
 import jdk.vm.ci.meta.MetaAccessProvider;
 
+/**
+ * The {code ExpandInstanceOfPhase} expands {@code InstanceOfNode} into a potential null check plus
+ * an instanceof test on a non-null object and without profile. If the {@code InstanceOfNode} is
+ * used by a {@FixedNode}, the expanded subgraph will be inserted before the {@FixedNode}.
+ * Otherwise, the subgrpah will be inserted at {@code InstanceOfNode.getAnchor()}, or at the latest
+ * {@FixedNode} in the current schedule.
+ */
 public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
 
     @Override
     protected void run(StructuredGraph graph, PhaseContext context) {
+        // First pass, expand InstanceOfNode at its FloatingNode usage. In terms of not
+        // anchored InstanceOfNode (InstanceOfNode.anchor == null), we rely on a SchedulePhase to
+        // locate the place for expanded subgraph.
         SchedulePhase schedulePhase = new SchedulePhase(SchedulingStrategy.EARLIEST);
         schedulePhase.apply(graph);
         ScheduleResult schedule = graph.getLastSchedule();
-
-        for (InstanceOfNode node : graph.getNodes(InstanceOfNode.TYPE)) {
-            processNotAnchoredInstanceOf(graph, node, schedule, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
+        for (InstanceOfNode instanceOf : graph.getNodes(InstanceOfNode.TYPE)) {
+            processNotAnchoredInstanceOf(instanceOf, schedule, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
         }
-
-        for (InstanceOfNode node : graph.getNodes(InstanceOfNode.TYPE)) {
-            processInstanceOf(graph, node, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
+        // Second pass, expand InstanceOfNode at its FixedNode usage.
+        for (InstanceOfNode instanceOf : graph.getNodes(InstanceOfNode.TYPE)) {
+            processAnchoredInstanceOf(instanceOf, context.getStampProvider(), context.getMetaAccess(), context.getConstantReflection());
         }
         // TODO uncomment assert graph.getNodes(InstanceOfNode.TYPE).isEmpty();
     }
@@ -82,17 +91,27 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
     public static final double NULL_PROBABILITY = 0.1;
     public static final double HIT_PROBABILITY = 0.4;
 
-    private static void createDiamonds(InstanceOfNode instanceOf, FixedNode insertBefore, ArrayList<AbstractBeginNode> trueBranches, ArrayList<AbstractBeginNode> falseBranches,
-                    StampProvider stampProvider, MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider) {
+    /**
+     * Expand the given {@code InstanceOfNode instanceOf} preceding the given
+     * {@code FixedNode insertBefore}. After the expansion, {@code insertBefore} (and its subsequent
+     * control flow) will be temporarily disconnected. The caller is responsible for re-wiring the
+     * control flow with the output {@code ArrayList<AbstractBeginNode> retTrueBranches} and
+     * {@code ArrayList<AbstractBeginNode> retFalseBranches}, representing the branches of succeeded
+     * or failed test for the given {@code instanceOf}, respectively.
+     */
+    private static void createDiamonds(InstanceOfNode instanceOf, FixedNode insertBefore, StampProvider stampProvider,
+                    MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider,
+                    /* outputs */ ArrayList<AbstractBeginNode> retTrueBranches, ArrayList<AbstractBeginNode> retFalseBranches) {
+        StructuredGraph graph = instanceOf.graph();
         FixedWithNextNode lastFixed = (FixedWithNextNode) insertBefore.predecessor();
         lastFixed.setNext(null);
-        StructuredGraph graph = instanceOf.graph();
 
         ObjectStamp checkedStamp = instanceOf.getCheckedStamp();
         ValueNode object = instanceOf.getValue();
         ObjectStamp objectStamp = ((ObjectStamp) object.stamp());
 
-        // insert null check if needed
+        // TODO add profile-based optimizations
+        // Append IfNode for null check if needed.
         ValueNode nonNullObject = null;
         if (!objectStamp.nonNull()) {
             LogicNode nullCheck = graph.unique(new IsNullNode(object));
@@ -100,52 +119,55 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
             BeginNode nonNullSuccessor = graph.createBegin();
             IfNode ifNode = graph.add(new IfNode(nullCheck, nullSuccessor, nonNullSuccessor, 1.0 - NULL_PROBABILITY));
             nonNullObject = graph.addOrUnique(new PiNode(object, objectStamp.join(StampFactory.objectNonNull()), nonNullSuccessor));
-            // append ifNode for null check
             lastFixed.setNext(ifNode);
             lastFixed = nonNullSuccessor;
             if (checkedStamp.nonNull()) {
                 // This is a check where x == null returns a false result.
-                falseBranches.add(nullSuccessor);
+                retFalseBranches.add(nullSuccessor);
             } else {
                 // This is a check where x == null returns a true result.
-                trueBranches.add(nullSuccessor);
+                retTrueBranches.add(nullSuccessor);
             }
         } else {
             nonNullObject = object;
         }
 
-        // We have now the object checked for nullness.
+        // We have now the object checked for nullness. Append IfNode for type check.
         ValueNode hub = graph.addOrUnique(LoadHubNode.create(nonNullObject, stampProvider, metaAccessProvider, constantReflectionProvider));
         LogicNode loweredInstanceOfNode = graph.addOrUnique(LoweredInstanceOfNode.create(checkedStamp.getTypeReference(), nonNullObject, hub));
-
         BeginNode trueSuccessor = graph.createBegin();
         BeginNode falseSuccessor = graph.createBegin();
         IfNode ifNode = graph.add(new IfNode(loweredInstanceOfNode, trueSuccessor, falseSuccessor, HIT_PROBABILITY));
-        // append ifNode for instanceof
         lastFixed.setNext(ifNode);
-        trueBranches.add(trueSuccessor);
-        falseBranches.add(falseSuccessor);
+        retTrueBranches.add(trueSuccessor);
+        retFalseBranches.add(falseSuccessor);
 
-        assert trueBranches.size() > 0;
-        assert falseBranches.size() > 0;
+        assert retTrueBranches.size() > 0;
+        assert retFalseBranches.size() > 0;
     }
 
-    private static void processNotAnchoredInstanceOf(StructuredGraph graph, InstanceOfNode instanceOf, ScheduleResult schedule, StampProvider stampProvider,
+    /**
+     * Expand InstanceOfNode at its FloatingNode usage. The expanded subgraph will be inserted at
+     * {@code InstanceOfNode.getAnchor()} if not null, or otherwise at the scheduled location.
+     */
+    private static void processNotAnchoredInstanceOf(InstanceOfNode instanceOf, ScheduleResult schedule, StampProvider stampProvider,
                     MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider) {
-        for (Node n : instanceOf.usages().snapshot()) {
+        StructuredGraph graph = instanceOf.graph();
+
+        for (Node usage : instanceOf.usages().snapshot()) {
             ArrayList<AbstractBeginNode> trueBranches = new ArrayList<>();
             ArrayList<AbstractBeginNode> falseBranches = new ArrayList<>();
 
-            if (n instanceof ConditionalNode) {
+            if (usage instanceof ConditionalNode) {
                 FixedWithNextNode anchor = getAnchor(instanceOf, schedule);
                 FrameState lastFrameState = findLastFrameState(anchor);
                 FixedNode insertBefore = anchor.next();
-                createDiamonds(instanceOf, insertBefore, trueBranches, falseBranches, stampProvider, metaAccessProvider, constantReflectionProvider);
+                createDiamonds(instanceOf, insertBefore, stampProvider, metaAccessProvider, constantReflectionProvider, trueBranches, falseBranches);
 
                 MergeNode merge = graph.createMerge();
                 merge.setStateAfter(lastFrameState);
 
-                ConditionalNode conditionalNode = (ConditionalNode) n;
+                ConditionalNode conditionalNode = (ConditionalNode) usage;
                 ValuePhiNode valuePhi = graph.addWithoutUnique(new ValuePhiNode(conditionalNode.stamp(), merge));
 
                 // Connect false branches.
@@ -167,40 +189,41 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
                 merge.setNext(insertBefore);
                 conditionalNode.replaceAtUsages(valuePhi);
                 conditionalNode.safeDelete();
-            } else if (n instanceof ShortCircuitOrNode) {
+            } else if (usage instanceof ShortCircuitOrNode) {
                 // TODO unwind ShortCircuitOrNode
             }
         }
     }
 
-    private static void processInstanceOf(StructuredGraph graph, InstanceOfNode instanceOf, StampProvider stampProvider,
+    /**
+     * Expand InstanceOfNode at its FixedNode usage. The expanded subgraph will be inserted at the
+     * FixedNode.
+     */
+    private static void processAnchoredInstanceOf(InstanceOfNode instanceOf, StampProvider stampProvider,
                     MetaAccessProvider metaAccessProvider, ConstantReflectionProvider constantReflectionProvider) {
-        for (Node n : instanceOf.usages().snapshot()) {
-            // The InstanceOfNode will be expanded into a potential null check (IsNullNode) and a
-            // lowered instanceof check (loweredInstanceOfNode). In case it results into 3 branches,
-            // we need to record them and connect to the corresponding successors.
+        StructuredGraph graph = instanceOf.graph();
+        for (Node usage : instanceOf.usages().snapshot()) {
             ArrayList<AbstractBeginNode> trueBranches = new ArrayList<>();
             ArrayList<AbstractBeginNode> falseBranches = new ArrayList<>();
 
-            if (n instanceof IfNode) {
-                IfNode ifNode = (IfNode) n;
+            if (usage instanceof IfNode) {
+                IfNode ifNode = (IfNode) usage;
                 FrameState lastFrameState = findLastFrameState(ifNode);
 
-                createDiamonds(instanceOf, ifNode, trueBranches, falseBranches, stampProvider, metaAccessProvider, constantReflectionProvider);
+                createDiamonds(instanceOf, ifNode, stampProvider, metaAccessProvider, constantReflectionProvider, trueBranches, falseBranches);
 
                 AbstractBeginNode trueSuccessor = ifNode.trueSuccessor();
                 AbstractBeginNode falseSuccessor = ifNode.falseSuccessor();
 
-                // at this point we are safe to drop the original IfNode
                 ifNode.safeDelete();
 
                 connectBranches(graph, lastFrameState, falseBranches, falseSuccessor);
                 connectBranches(graph, lastFrameState, trueBranches, trueSuccessor);
-            } else if (n instanceof FixedGuardNode) {
-                FixedGuardNode fixedGuardNode = (FixedGuardNode) n;
+            } else if (usage instanceof FixedGuardNode) {
+                FixedGuardNode fixedGuardNode = (FixedGuardNode) usage;
                 FrameState lastFrameState = findLastFrameState(fixedGuardNode);
 
-                createDiamonds(instanceOf, fixedGuardNode, trueBranches, falseBranches, stampProvider, metaAccessProvider, constantReflectionProvider);
+                createDiamonds(instanceOf, fixedGuardNode, stampProvider, metaAccessProvider, constantReflectionProvider, trueBranches, falseBranches);
 
                 ArrayList<AbstractBeginNode> deoptBranches = falseBranches;
                 ArrayList<AbstractBeginNode> continueBranches = trueBranches;
@@ -209,21 +232,22 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
                     continueBranches = falseBranches;
                 }
 
-                AbstractBeginNode deoptBranch = BeginNode.begin(graph.add(new DeoptimizeNode(fixedGuardNode.getAction(), fixedGuardNode.getReason(), fixedGuardNode.getSpeculation())));
-                connectBranches(graph, lastFrameState, deoptBranches, deoptBranch);
-
                 FixedNode successor = fixedGuardNode.next();
                 fixedGuardNode.setNext(null);
-
+                // create deoptimize branch
+                DeoptimizeNode deoptizeNode = new DeoptimizeNode(fixedGuardNode.getAction(), fixedGuardNode.getReason(), fixedGuardNode.getSpeculation());
+                AbstractBeginNode deoptBranch = BeginNode.begin(graph.add(deoptizeNode));
                 AbstractBeginNode continueBranch = BeginNode.begin(successor);
+
                 fixedGuardNode.replaceAtUsages(continueBranch);
                 fixedGuardNode.safeDelete();
 
+                connectBranches(graph, lastFrameState, deoptBranches, deoptBranch);
                 connectBranches(graph, lastFrameState, continueBranches, continueBranch);
-            } else if (n instanceof ShortCircuitOrNode) {
+            } else if (usage instanceof ShortCircuitOrNode) {
                 // TODO should have been handled in processNotAnchoredInstanceOf
             } else {
-                System.out.println(n.toString());
+                System.out.println(usage.toString());
                 assert false;
             }
         }
@@ -233,12 +257,21 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
         }
     }
 
-    private static void connectBranches(StructuredGraph graph, FrameState lastFrameState, ArrayList<AbstractBeginNode> branches, AbstractBeginNode successor) {
+    /**
+     * Connect the given {@code ArrayList<AbstractBeginNode> branches} to the given
+     * {@code AbstractBeginNode successor}.
+     */
+    private static void connectBranches(StructuredGraph graph, FrameState lastFrameState,
+                    ArrayList<AbstractBeginNode> branches, AbstractBeginNode successor) {
         if (branches.size() > 1) {
             MergeNode merge = graph.createMerge();
             if (lastFrameState != null && lastFrameState.isAlive()) {
+                // lastFrameState may be monopolistic and gets eliminated without checking
+                // additional usage by other phases.
                 merge.setStateAfter(lastFrameState.duplicate());
             }
+            // If successor is of type BeginNode, it is safe to drop providing all its usages are
+            // updated.
             GuardPhiNode guardPhi = null;
             if (successor.hasUsages() && successor instanceof BeginNode) {
                 guardPhi = graph.addWithoutUnique(new GuardPhiNode(merge));
@@ -261,6 +294,8 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
                 merge.setNext(next);
                 successor.safeDelete();
             } else {
+                // We preserve the successor if it is of type BeginStateSplitNode or
+                // KillingBeginNode.
                 merge.setNext(successor);
             }
         } else {
@@ -278,10 +313,17 @@ public class ExpandInstanceOfPhase extends BasePhase<PhaseContext> {
         return ((StateSplit) lastFixed).stateAfter();
     }
 
+    /**
+     * @return the anchor in the control flow graph for the given {@code InstanceOfNode instanceOf}.
+     *         In case {@code InstanceOfNode.getAnchor()} is null, the scheduled location is
+     *         returned.
+     */
     private static FixedWithNextNode getAnchor(InstanceOfNode instanceOf, ScheduleResult schedule) {
         if (instanceOf.getAnchor() != null) {
             return instanceOf.getAnchor().asNode();
         } else {
+            // We rely on Node order within a Block being the schedule, i.e., if the InstanceOfNode
+            // is after a FixedWithNextNode, it is scheduled after that.
             Block block = schedule.getNodeToBlockMap().get(instanceOf);
             FixedWithNextNode lastFixed = block.getBeginNode();
 
