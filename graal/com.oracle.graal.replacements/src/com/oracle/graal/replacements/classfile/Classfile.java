@@ -71,10 +71,10 @@ public class Classfile {
         ClassfileConstantPool cp = new ClassfileConstantPool(stream, context);
 
         // access_flags, this_class, super_class
-        stream.skipBytes(6);
+        skipFully(stream, 6);
 
         // interfaces
-        stream.skipBytes(stream.readUnsignedShort() * 2);
+        skipFully(stream, stream.readUnsignedShort() * 2);
 
         // fields
         skipFields(stream);
@@ -100,10 +100,25 @@ public class Classfile {
         int attributesCount;
         attributesCount = stream.readUnsignedShort();
         for (int i = 0; i < attributesCount; i++) {
-            stream.skipBytes(2); // name_index
+            skipFully(stream, 2); // name_index
             int attributeLength = stream.readInt();
-            stream.skip(attributeLength);
+            skipFully(stream, attributeLength);
         }
+    }
+
+    static void skipFully(DataInputStream stream, int n) throws IOException {
+        long skipped = 0;
+        do {
+            long s = stream.skip(n - skipped);
+            skipped += s;
+            if (s == 0 && skipped != n) {
+                // Check for EOF (i.e., truncated class file)
+                if (stream.read() == -1) {
+                    throw new IOException("truncated stream");
+                }
+                skipped++;
+            }
+        } while (skipped != n);
     }
 
     private ClassfileBytecode findCodeAttribute(DataInputStream stream, ClassfileConstantPool cp, String name, String descriptor, boolean isStatic) throws IOException {
@@ -124,7 +139,7 @@ public class Classfile {
                     code = null;
                 }
             } else {
-                stream.skip(attributeLength);
+                skipFully(stream, attributeLength);
             }
         }
         return code;
@@ -133,7 +148,7 @@ public class Classfile {
     private static void skipFields(DataInputStream stream) throws IOException {
         int count = stream.readUnsignedShort();
         for (int i = 0; i < count; i++) {
-            stream.skipBytes(6); // access_flags, name_index, descriptor_index
+            skipFully(stream, 6); // access_flags, name_index, descriptor_index
             skipAttributes(stream);
         }
     }
