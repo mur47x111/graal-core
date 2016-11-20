@@ -511,6 +511,21 @@ public class InstanceOfTest extends TypeCheckTest {
         test("shortCircuitOr", 1L);
     }
 
+    public boolean frameStateUsage(Object obj) {
+        boolean flag = obj instanceof String;
+        int hashCode = obj.hashCode();
+        if (flag) {
+            return hashCode > 0;
+        } else {
+            return hashCode % 2 == 0;
+        }
+    }
+
+    @Test
+    public void testFrameStateUsage() {
+        test("frameStateUsage", 1L);
+    }
+
     private void testConstantReturn(String name, Object value) {
         StructuredGraph result = buildGraph(name);
         ReturnNode ret = result.getNodes(ReturnNode.TYPE).first();
