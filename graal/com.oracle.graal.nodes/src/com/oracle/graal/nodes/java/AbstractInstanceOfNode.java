@@ -145,4 +145,9 @@ public abstract class AbstractInstanceOfNode extends UnaryOpLogicNode implements
     public boolean allowsNull() {
         return !checkedStamp.nonNull();
     }
+
+    @Override
+    public boolean allowShortCircuitOr() {
+        return false;
+    }
 }

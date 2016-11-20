@@ -75,4 +75,8 @@ public abstract class LogicNode extends FloatingNode implements IndirectCanonica
 
         return false;
     }
+
+    public boolean allowShortCircuitOr() {
+        return true;
+    }
 }

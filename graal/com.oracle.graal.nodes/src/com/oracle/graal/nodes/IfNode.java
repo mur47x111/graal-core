@@ -635,7 +635,7 @@ public final class IfNode extends ControlSplitNode implements Simplifiable, LIRL
             } else {
                 return null;
             }
-            if (otherValue.isConstant()) {
+            if (otherValue.isConstant() && conditional.condition().allowShortCircuitOr()) {
                 double shortCutProbability = probability(trueSuccessor());
                 LogicNode newCondition = LogicNode.or(condition(), negateCondition, conditional.condition(), negateConditionalCondition, shortCutProbability);
                 return graph().unique(new ConditionalNode(newCondition, constant, otherValue));
