@@ -30,6 +30,8 @@ import org.graalvm.compiler.nodes.StructuredGraph;
 import org.graalvm.compiler.nodes.debug.DynamicCounterNode;
 import org.graalvm.compiler.phases.Phase;
 
+import jdk.vm.ci.code.CodeUtil;
+
 public class ProfileFixedNodePhase extends Phase {
 
     private final MethodFilter[] methodFilters;
@@ -48,7 +50,7 @@ public class ProfileFixedNodePhase extends Phase {
                 identifier.append(node.toString(Verbosity.Name));
                 if (node.getNodeSourcePosition() != null) {
                     identifier.append(' ');
-                    identifier.append(node.getNodeSourcePosition());
+                    identifier.append(node.getNodeSourcePosition().toString().replace(CodeUtil.NEW_LINE, " "));
                 }
                 DynamicCounterNode.addCounterBefore(node.getNodeClass().shortName(), identifier.toString(),
                                 1, true, insertAfter ? ((FixedWithNextNode) node).next() : node);
