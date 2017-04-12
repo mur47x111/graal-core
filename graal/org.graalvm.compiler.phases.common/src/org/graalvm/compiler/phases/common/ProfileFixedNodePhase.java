@@ -22,6 +22,7 @@
  */
 package org.graalvm.compiler.phases.common;
 
+import org.graalvm.compiler.debug.CSVUtil;
 import org.graalvm.compiler.debug.MethodFilter;
 import org.graalvm.compiler.nodeinfo.Verbosity;
 import org.graalvm.compiler.nodes.FixedNode;
@@ -48,10 +49,11 @@ public class ProfileFixedNodePhase extends Phase {
             if (MethodFilter.matchesClassName(methodFilters, node.getClass().getName())) {
                 StringBuilder identifier = new StringBuilder();
                 identifier.append(node.toString(Verbosity.Name));
+                identifier.append(CSVUtil.SEPARATOR);
                 if (node.getNodeSourcePosition() != null) {
-                    identifier.append(' ');
                     identifier.append(node.getNodeSourcePosition().toString().replace(CodeUtil.NEW_LINE, " "));
                 }
+                identifier.append(CSVUtil.SEPARATOR);
                 DynamicCounterNode.addCounterBefore(node.getNodeClass().shortName(), identifier.toString(),
                                 1, true, insertAfter ? ((FixedWithNextNode) node).next() : node);
             }
