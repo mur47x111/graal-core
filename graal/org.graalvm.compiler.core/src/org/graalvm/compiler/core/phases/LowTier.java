@@ -38,6 +38,7 @@ import org.graalvm.compiler.phases.common.ExpandLogicPhase;
 import org.graalvm.compiler.phases.common.FixReadsPhase;
 import org.graalvm.compiler.phases.common.LoweringPhase;
 import org.graalvm.compiler.phases.common.ProfileCompiledMethodsPhase;
+import org.graalvm.compiler.phases.common.ProfileFixedNodePhase;
 import org.graalvm.compiler.phases.common.PropagateDeoptimizeProbabilityPhase;
 import org.graalvm.compiler.phases.common.UseTrappingNullChecksPhase;
 import org.graalvm.compiler.phases.schedule.SchedulePhase;
@@ -51,6 +52,12 @@ public class LowTier extends PhaseSuite<LowTierContext> {
         // @formatter:off
         @Option(help = "", type = OptionType.Debug)
         public static final OptionKey<Boolean> ProfileCompiledMethods = new OptionKey<>(false);
+
+        @Option(help = "", type = OptionType.Debug)
+        public static final OptionKey<String> ProfileFixedNode = new OptionKey<>(null);
+
+        @Option(help = "", type = OptionType.Debug)
+        public static final OptionKey<Boolean> ProfileFixedNodeInsertAfter = new OptionKey<>(false);
         // @formatter:on
 
     }
@@ -73,6 +80,10 @@ public class LowTier extends PhaseSuite<LowTierContext> {
         appendPhase(new ExpandLogicPhase());
 
         appendPhase(new FixReadsPhase(true, new SchedulePhase(GraalOptions.StressTestEarlyReads.getValue(options) ? SchedulingStrategy.EARLIEST : SchedulingStrategy.LATEST_OUT_OF_LOOPS)));
+
+        if (Options.ProfileFixedNode.getValue(options) != null) {
+            appendPhase(new ProfileFixedNodePhase(Options.ProfileFixedNode.getValue(options), Options.ProfileFixedNodeInsertAfter.getValue(options)));
+        }
 
         appendPhase(canonicalizerWithoutGVN);
 

@@ -37,6 +37,7 @@ import org.graalvm.compiler.graph.spi.Canonicalizable;
 import org.graalvm.compiler.graph.spi.CanonicalizerTool;
 import org.graalvm.compiler.nodeinfo.InputType;
 import org.graalvm.compiler.nodeinfo.NodeInfo;
+import org.graalvm.compiler.nodeinfo.Verbosity;
 import org.graalvm.compiler.nodes.CanonicalizableLocation;
 import org.graalvm.compiler.nodes.ConstantNode;
 import org.graalvm.compiler.nodes.FrameState;
@@ -149,5 +150,14 @@ public class ReadNode extends FloatableAccessNode implements LIRLowerableAccess,
     @Override
     public Stamp getAccessStamp() {
         return stamp();
+    }
+
+    @Override
+    public String toString(Verbosity verbosity) {
+        if (verbosity == Verbosity.Name) {
+            return "Read#" + getLocationIdentity();
+        } else {
+            return super.toString(verbosity);
+        }
     }
 }
