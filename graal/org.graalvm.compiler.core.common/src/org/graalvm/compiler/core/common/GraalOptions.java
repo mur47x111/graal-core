@@ -272,4 +272,21 @@ public final class GraalOptions {
     @Option(help = "Enable experimental Trace Register Allocation.", type = OptionType.Debug)
     public static final OptionKey<Boolean> TraceRA = new OptionKey<>(false);
 
+    @Option(help = "Profile Deoptimizations")
+    public static final OptionKey<Boolean> ProfileDeoptimization = new OptionKey<>(false);
+    @Option(help = "Conservative Deoptimizations")
+    public static final OptionKey<Boolean> ConservativeDeoptimization = new OptionKey<>(false);
+
+    @Option(help = "Rewrite Deoptimizations")
+    public static final OptionKey<Boolean> AdaptiveDeoptimization = new OptionKey<>(false);
+
+    @Option(help = "Rewrite Deoptimizations Aging")
+    public static final OptionKey<Integer> AdaptiveDeoptimizationAging = new OptionKey<>(0);
+
+    @Option(help = "Rewrite Deoptimizations Lower Bound")
+    public static final OptionKey<Integer> AdaptiveDeoptimizationLower = new OptionKey<>(1);
+
+    @Option(help = "Rewrite Deoptimizations Upper Bound")
+    public static final OptionKey<Integer> AdaptiveDeoptimizationUpper = new OptionKey<>(100);
+
 }

@@ -222,6 +222,7 @@ public class MultiTypeGuardInlineInfo extends AbstractInlineInfo {
             unknownTypeSux = createInvocationBlock(graph, invoke, returnMerge, returnValuePhi, exceptionMerge, exceptionObjectPhi, false);
         } else {
             unknownTypeSux = graph.add(new DeoptimizeNode(DeoptimizationAction.InvalidateReprofile, DeoptimizationReason.TypeCheckedInliningViolated));
+            unknownTypeSux.setNodeSourcePosition(invoke.asNode().getNodeSourcePosition());
         }
         successors[successors.length - 1] = BeginNode.begin(unknownTypeSux);
 
@@ -456,8 +457,10 @@ public class MultiTypeGuardInlineInfo extends AbstractInlineInfo {
         InliningUtil.replaceInvokeCallTarget(invoke, graph, kind, target);
     }
 
-    private static AbstractBeginNode createUnknownTypeSuccessor(StructuredGraph graph) {
-        return BeginNode.begin(graph.add(new DeoptimizeNode(DeoptimizationAction.InvalidateReprofile, DeoptimizationReason.TypeCheckedInliningViolated)));
+    private AbstractBeginNode createUnknownTypeSuccessor(StructuredGraph graph) {
+        DeoptimizeNode unknownTypeSux = graph.add(new DeoptimizeNode(DeoptimizationAction.InvalidateReprofile, DeoptimizationReason.TypeCheckedInliningViolated));
+        unknownTypeSux.setNodeSourcePosition(invoke.asNode().getNodeSourcePosition());
+        return BeginNode.begin(unknownTypeSux);
     }
 
     @Override

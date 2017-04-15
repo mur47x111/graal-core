@@ -33,12 +33,15 @@ import org.graalvm.compiler.options.OptionType;
 import org.graalvm.compiler.options.OptionValues;
 import org.graalvm.compiler.phases.PhaseSuite;
 import org.graalvm.compiler.phases.common.CanonicalizerPhase;
+import org.graalvm.compiler.phases.common.ConservativeDeoptimizationPhase;
 import org.graalvm.compiler.phases.common.DeadCodeEliminationPhase;
 import org.graalvm.compiler.phases.common.ExpandLogicPhase;
 import org.graalvm.compiler.phases.common.FixReadsPhase;
 import org.graalvm.compiler.phases.common.LoweringPhase;
 import org.graalvm.compiler.phases.common.ProfileCompiledMethodsPhase;
+import org.graalvm.compiler.phases.common.ProfileDeoptimizationPhase;
 import org.graalvm.compiler.phases.common.PropagateDeoptimizeProbabilityPhase;
+import org.graalvm.compiler.phases.common.AdaptiveDeoptimizationPhase;
 import org.graalvm.compiler.phases.common.UseTrappingNullChecksPhase;
 import org.graalvm.compiler.phases.schedule.SchedulePhase;
 import org.graalvm.compiler.phases.schedule.SchedulePhase.SchedulingStrategy;
@@ -73,6 +76,18 @@ public class LowTier extends PhaseSuite<LowTierContext> {
         appendPhase(new ExpandLogicPhase());
 
         appendPhase(new FixReadsPhase(true, new SchedulePhase(GraalOptions.StressTestEarlyReads.getValue(options) ? SchedulingStrategy.EARLIEST : SchedulingStrategy.LATEST_OUT_OF_LOOPS)));
+
+        if (GraalOptions.ProfileDeoptimization.getValue(options)) {
+            appendPhase(new ProfileDeoptimizationPhase());
+        }
+        if (GraalOptions.ConservativeDeoptimization.getValue(options)) {
+            appendPhase(new ConservativeDeoptimizationPhase());
+        }
+        if (GraalOptions.AdaptiveDeoptimization.getValue(options)) {
+            appendPhase(new AdaptiveDeoptimizationPhase(GraalOptions.AdaptiveDeoptimizationAging.getValue(options),
+                            GraalOptions.AdaptiveDeoptimizationLower.getValue(options),
+                            GraalOptions.AdaptiveDeoptimizationUpper.getValue(options)));
+        }
 
         appendPhase(canonicalizerWithoutGVN);
 

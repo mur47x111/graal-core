@@ -115,6 +115,7 @@ public class TypeGuardInlineInfo extends AbstractInlineInfo {
 
         LogicNode typeCheck = CompareNode.createCompareNode(graph, Condition.EQ, receiverHub, typeHub, providers.getConstantReflection());
         FixedGuardNode guard = graph.add(new FixedGuardNode(typeCheck, DeoptimizationReason.TypeCheckedInliningViolated, DeoptimizationAction.InvalidateReprofile));
+        guard.setNodeSourcePosition(invoke.asNode().getNodeSourcePosition());
         assert invoke.predecessor() != null;
 
         ValueNode anchoredReceiver = InliningUtil.createAnchoredReceiver(graph, guard, type, nonNullReceiver, true);
