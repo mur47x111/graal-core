@@ -73,10 +73,6 @@ public class LowTier extends PhaseSuite<LowTierContext> {
 
         appendPhase(new LoweringPhase(canonicalizer, LoweringTool.StandardLoweringStage.LOW_TIER));
 
-        appendPhase(new ExpandLogicPhase());
-
-        appendPhase(new FixReadsPhase(true, new SchedulePhase(GraalOptions.StressTestEarlyReads.getValue(options) ? SchedulingStrategy.EARLIEST : SchedulingStrategy.LATEST_OUT_OF_LOOPS)));
-
         if (GraalOptions.ProfileDeoptimization.getValue(options)) {
             appendPhase(new ProfileDeoptimizationPhase());
         }
@@ -88,6 +84,10 @@ public class LowTier extends PhaseSuite<LowTierContext> {
                             GraalOptions.AdaptiveDeoptimizationLower.getValue(options),
                             GraalOptions.AdaptiveDeoptimizationUpper.getValue(options)));
         }
+
+        appendPhase(new ExpandLogicPhase());
+
+        appendPhase(new FixReadsPhase(true, new SchedulePhase(GraalOptions.StressTestEarlyReads.getValue(options) ? SchedulingStrategy.EARLIEST : SchedulingStrategy.LATEST_OUT_OF_LOOPS)));
 
         appendPhase(canonicalizerWithoutGVN);
 
